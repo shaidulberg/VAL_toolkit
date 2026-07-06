@@ -1,0 +1,25 @@
+# Example config for AUC comparison bar plot.
+# Input CSV must contain Dataset, Signature, and AUC columns by default.
+
+input_csv: example_data/auc_barplot_input_example.csv
+output_dir: figures/example_auc_barplot
+basename: B_40_50_signature_auc_example
+
+dataset_col: Dataset
+signature_col: Signature
+y_col: AUC
+
+ylim: [0, 1.05]
+dpi: 300
+auc_label_offset: 0.045
+order_by_mean_desc: false
+
+signature_order:
+  - Our B 40-50 signature
+  - Author B abundance
+  - CellTypist B abundance
+  - SCimilarity B abundance
+  - SingleR ENCODE B abundance
+  - SingleR HPCA B abundance
+  - SingleR HEMA B abundance
+  - SingleR Monaco B abundance

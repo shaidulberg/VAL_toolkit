@@ -1,0 +1,46 @@
+# Example config for computing and plotting annotation benchmark metrics.
+# Paths can be absolute or relative to the repository root.
+
+output_dir: figures/example_annotation_benchmark
+metrics_to_plot:
+  - F1
+  - Precision
+  - Recall
+
+ylim: [0, 1.05]
+dpi: 300
+drop_missing_predictions: true
+
+cell_types:
+  - B
+  - CD4
+  - CD8
+  - DC
+  - Mono
+  - NK
+
+cell_type_order:
+  - B
+  - CD4
+  - CD8
+  - DC
+  - Mono
+  - NK
+
+method_order:
+  - singler.ENCODE
+  - singler.HPCA
+  - CellTypist
+  - SCimilarity
+
+# Use datasets for cell-level inputs.
+# Alternatively, set metrics_csv to a precomputed long-format metrics table.
+datasets:
+  - name: ExampleDataset
+    annotation_csv: example_data/annotation_predictions_example.csv
+    truth_col: Reference
+    method_cols:
+      - singler.ENCODE
+      - singler.HPCA
+      - CellTypist
+      - SCimilarity

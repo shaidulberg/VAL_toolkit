@@ -1,0 +1,33 @@
+Dataset,Signature,AUC
+GSE166181,Our B 40-50 signature,0.78
+GSE234933,Our B 40-50 signature,0.74
+GSE232240,Our B 40-50 signature,0.69
+GSE200996_PBMC_RECIST,Our B 40-50 signature,0.66
+GSE166181,Author B abundance,0.62
+GSE234933,Author B abundance,0.64
+GSE232240,Author B abundance,0.58
+GSE200996_PBMC_RECIST,Author B abundance,0.70
+GSE166181,CellTypist B abundance,0.65
+GSE234933,CellTypist B abundance,0.60
+GSE232240,CellTypist B abundance,0.59
+GSE200996_PBMC_RECIST,CellTypist B abundance,0.71
+GSE166181,SCimilarity B abundance,0.63
+GSE234933,SCimilarity B abundance,0.61
+GSE232240,SCimilarity B abundance,0.57
+GSE200996_PBMC_RECIST,SCimilarity B abundance,0.70
+GSE166181,SingleR ENCODE B abundance,0.61
+GSE234933,SingleR ENCODE B abundance,0.60
+GSE232240,SingleR ENCODE B abundance,0.55
+GSE200996_PBMC_RECIST,SingleR ENCODE B abundance,0.70
+GSE166181,SingleR HPCA B abundance,0.60
+GSE234933,SingleR HPCA B abundance,0.58
+GSE232240,SingleR HPCA B abundance,0.54
+GSE200996_PBMC_RECIST,SingleR HPCA B abundance,0.69
+GSE166181,SingleR HEMA B abundance,0.59
+GSE234933,SingleR HEMA B abundance,0.57
+GSE232240,SingleR HEMA B abundance,0.55
+GSE200996_PBMC_RECIST,SingleR HEMA B abundance,0.68
+GSE166181,SingleR Monaco B abundance,0.60
+GSE234933,SingleR Monaco B abundance,0.59
+GSE232240,SingleR Monaco B abundance,0.56
+GSE200996_PBMC_RECIST,SingleR Monaco B abundance,0.69

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+.venv/
+.env
+*.h5ad
+*.h5mu
+*.loom
+*.rds
+*.RDS
+*.h5
+figures/*
+!figures/.gitkeep
