@@ -1,0 +1,120 @@
+# Example config for generating ACS figures A-F from one h5ad dataset.
+# First create the example h5ad:
+#   python scripts/create_example_h5ad.py
+# Then run:
+#   python scripts/run_acs_figures.py --config configs/acs_figures.example.yaml
+
+input_h5ad: example_data/val_ranked_bins_example.h5ad
+output_dir: figures/example_acs_figures
+
+obs_columns:
+  patient_id: patient_id
+  timepoint: timepoint
+  response: response
+  # sample_id is optional. If omitted, sample_id is patient_id + timepoint.
+  sample_id:
+
+response_groups:
+  positive: R
+  negative: NR
+
+major_cell_types:
+  - B
+  - CD4 T
+  - CD8 T
+  - DC
+  - Monocytes
+  - NK
+
+annotation_source:
+  # obs_columns is the manuscript-style ACS mode: annotations are already in adata.obs.
+  # Alternative modes:
+  #   annotation_csv: read annotation calls from a CSV matched by cell_id
+  #   marker_ensemble: self-contained fallback using built-in marker scores
+  mode: obs_columns
+
+  # For annotation_csv mode only:
+  # path: example_data/my_annotation_calls.csv
+  # cell_id_column: cell_id
+
+annotation_methods:
+  - name: CellTypist
+    label_column: celltypist_label
+    confidence_column: celltypist_confidence
+
+  - name: SingleR_HPCA
+    label_column: singler_hpca_label
+    confidence_column: singler_hpca_confidence
+
+  - name: SingleR_Monaco
+    label_column: singler_monaco_label
+    confidence_column: singler_monaco_confidence
+
+  - name: SCimilarity
+    label_column: scimilarity_label
+    confidence_column: scimilarity_confidence
+
+# User-editable label mapping.
+# Keys are the final major immune lineages used for ACS figures.
+# Values are raw labels that may appear in CellTypist/SingleR/SCimilarity/etc.
+label_mapping:
+  B:
+    - B cell
+    - B cells
+    - Naive B
+    - Memory B
+    - Plasma cell
+    - Plasmablast
+  CD4 T:
+    - CD4 T cell
+    - CD4 T cells
+    - CD4-positive T cell
+    - Helper T
+    - Treg
+  CD8 T:
+    - CD8 T cell
+    - CD8 T cells
+    - CD8-positive T cell
+    - Cytotoxic T cell
+  DC:
+    - Dendritic cell
+    - Dendritic cells
+    - cDC
+    - cDC1
+    - cDC2
+    - pDC
+    - LAMP3 DC
+  Monocytes:
+    - Monocyte
+    - Monocytes
+    - Classical monocyte
+    - Non-classical monocyte
+    - Intermediate monocyte
+  NK:
+    - NK cell
+    - NK cells
+    - Natural killer cell
+
+acs:
+  # Used only when annotation_source.mode: marker_ensemble.
+  marker_ensemble:
+    layer:
+    use_raw: false
+    expression_transform: auto_log1p
+    min_markers_per_cell_type: 2
+
+binning:
+  n_bins: 10
+  # all_cells gives abundance of each ACS-ranked bin among all cells in the sample.
+  # cell_type_cells gives the fraction within that major cell type only.
+  denominator: all_cells
+
+statistics:
+  # FDR is calculated across all cell-type x bin tests by default.
+  # Use within_cell_type to correct the ten bins separately for each cell type.
+  fdr_scope: global
+
+plot:
+  fdr_threshold: 0.05
+  dpi: 300
+  basename: acs_figures_A_to_F

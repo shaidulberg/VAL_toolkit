@@ -1,0 +1,72 @@
+# Example config for generating panels A-F from one h5ad dataset.
+# First create the example h5ad:
+#   python scripts/create_example_h5ad.py
+
+input_h5ad: example_data/val_ranked_bins_example.h5ad
+output_dir: figures/example_val_ranked_bin_panels
+
+obs_columns:
+  patient_id: patient_id
+  timepoint: timepoint
+  response: response
+  # sample_id is optional. If omitted, sample_id is patient_id + timepoint.
+  sample_id:
+
+response_groups:
+  positive: R
+  negative: NR
+
+cell_types:
+  - B
+  - CD4 T
+  - CD8 T
+  - DC
+  - Monocytes
+  - NK
+
+val:
+  # marker_ensemble mode is fully self-contained: it annotates major immune cell types
+  # and computes a VAL-like voting score directly from the h5ad expression matrix.
+  # For manuscript-style VAL from external annotation tools, set mode: obs_annotations
+  # and provide annotation_columns/confidence_columns below.
+  mode: marker_ensemble
+  layer:
+  use_raw: false
+  expression_transform: auto_log1p
+  min_markers_per_cell_type: 2
+
+  # Optional: override the built-in marker sets.
+  # marker_sets:
+  #   B: [MS4A1, CD79A, CD79B, CD19]
+  #   CD4 T: [CD3D, CD3E, CD4, IL7R]
+  #   CD8 T: [CD3D, CD3E, CD8A, CD8B]
+  #   DC: [FCER1A, CD1C, CLEC9A, IL3RA]
+  #   Monocytes: [LST1, S100A8, S100A9, LYZ]
+  #   NK: [NKG7, GNLY, PRF1, KLRD1]
+
+  # Alternative mode for users who already ran annotation tools and stored predictions in adata.obs:
+  # mode: obs_annotations
+  # annotation_columns: [CellTypist_major, SingleR_major, SCimilarity_major]
+  # confidence_columns:
+  #   CellTypist_major: CellTypist_confidence
+  #   SingleR_major: SingleR_confidence
+  #   SCimilarity_major: SCimilarity_confidence
+  # label_map:
+  #   B cells: B
+  #   CD4 T cells: CD4 T
+  #   CD8 T cells: CD8 T
+  #   Classical monocytes: Monocytes
+
+binning:
+  n_bins: 10
+  # all_cells matches an abundance-style denominator. Use cell_type_cells to look within a cell type only.
+  denominator: all_cells
+
+statistics:
+  # FDR is calculated across all cell-type x bin tests by default.
+  fdr_scope: global
+
+plot:
+  fdr_threshold: 0.05
+  dpi: 300
+  basename: ranked_bin_panels_A_to_F

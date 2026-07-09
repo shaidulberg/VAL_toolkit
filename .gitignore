@@ -13,3 +13,6 @@ __pycache__/
 *.h5
 figures/*
 !figures/.gitkeep
+
+# Python packaging metadata
+*.egg-info/

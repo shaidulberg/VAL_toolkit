@@ -1,3 +1,3 @@
-"""Utilities for VAL single-cell annotation benchmark and response-signature validation."""
+"""Utilities for VAL/ACS single-cell confidence-ranked analyses."""
 
 __version__ = "0.1.0"
