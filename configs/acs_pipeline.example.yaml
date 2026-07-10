@@ -1,0 +1,172 @@
+# One-command ACS pipeline example.
+# This runs optional annotation backends and then generates ACS figures A-F.
+#
+# Quick test:
+#   python scripts/create_example_h5ad.py
+#   python scripts/run_acs_pipeline.py --config configs/acs_pipeline.example.yaml
+
+input_h5ad: example_data/val_ranked_bins_example.h5ad
+output_dir: figures/example_acs_pipeline
+
+pipeline:
+  run_annotation_backends: true
+  annotation_output_subdir: annotation_backends
+  acs_output_subdir: acs_figures
+  generated_config_subdir: generated_configs
+
+obs_columns:
+  patient_id: patient_id
+  timepoint: timepoint
+  response: response
+  sample_id:
+
+response_groups:
+  positive: R
+  negative: NR
+
+major_cell_types:
+  - B
+  - CD4 T
+  - CD8 T
+  - DC
+  - Monocytes
+  - NK
+
+# Annotation backend settings.
+# CellTypist is implemented. SingleR and SCimilarity are scaffolded and disabled by default.
+expression:
+  # CellTypist expects log1p-normalized expression to 10,000 counts per cell.
+  # Use true/true for raw or count-like matrices. Use false/false if already prepared.
+  layer:
+  use_raw: false
+  normalize_to_target_sum: true
+  target_sum: 10000
+  log1p: true
+
+annotation_backends:
+  celltypist:
+    enabled: true
+    model: Immune_All_Low.pkl
+    download_models: false
+    force_update_models: false
+    majority_voting: false
+    over_clustering:
+    use_gpu: false
+    prefix: celltypist
+    label_source: auto
+    on_unavailable: skip
+
+  singler:
+    enabled: false
+    references:
+      - HPCA
+      - Monaco
+      - DICE
+      - BlueprintEncode
+      - DatabaseImmuneCellExpression
+      - Novershtern
+    prefix: singler
+    rscript: Rscript
+    on_unavailable: skip
+
+  scimilarity:
+    enabled: false
+    model_path:
+    prefix: scimilarity
+    on_unavailable: skip
+
+backend_outputs:
+  combined_annotation_csv: annotation_backend_columns.csv
+  status_csv: annotation_backend_status.csv
+  write_h5ad: true
+  annotated_h5ad: annotation_backends_annotated.h5ad
+
+# ACS settings.
+# This default uses CellTypist as the automatic backend method.
+# For manuscript-style multi-method ACS, add SingleR/SCimilarity/user-supplied annotation columns here.
+annotation_source:
+  mode: obs_columns
+
+annotation_methods:
+  - name: CellTypist
+    label_column: celltypist_label
+    confidence_column: celltypist_confidence
+
+label_mapping:
+  B:
+    - B cell
+    - B cells
+    - B-cell lineage
+    - Naive B
+    - Memory B cells
+    - Memory B
+    - Plasma cells
+    - Plasma cell
+    - Plasmablasts
+    - Plasmablast
+  CD4 T:
+    - CD4 T cells
+    - CD4 T cell
+    - CD4-positive T cell
+    - Tcm/Naive helper T cells
+    - Tcm/Naive cytotoxic T cells
+    - Tregs
+    - Treg
+    - Regulatory T cells
+    - Helper T
+  CD8 T:
+    - CD8 T cells
+    - CD8 T cell
+    - CD8-positive T cell
+    - Cytotoxic T cells
+    - Cytotoxic T cell
+    - Tem/Effector helper T cells
+    - Tem/Effector cytotoxic T cells
+  DC:
+    - Dendritic cells
+    - Dendritic cell
+    - DC
+    - cDC
+    - cDC1
+    - cDC2
+    - pDC
+    - Plasmacytoid dendritic cells
+    - Conventional dendritic cells
+    - LAMP3 DC
+  Monocytes:
+    - Monocytes
+    - Monocyte
+    - Classical monocytes
+    - Classical monocyte
+    - Non-classical monocytes
+    - Non-classical monocyte
+    - Intermediate monocytes
+    - Intermediate monocyte
+    - Macrophages
+    - Macrophage
+  NK:
+    - NK cells
+    - NK cell
+    - Natural killer cell
+    - Natural killer cells
+    - NK
+    - ILC
+
+acs:
+  marker_ensemble:
+    layer:
+    use_raw: false
+    expression_transform: auto_log1p
+    min_markers_per_cell_type: 2
+
+binning:
+  n_bins: 10
+  denominator: all_cells
+
+statistics:
+  fdr_scope: global
+
+plot:
+  fdr_threshold: 0.05
+  dpi: 300
+  basename: acs_figures_A_to_F

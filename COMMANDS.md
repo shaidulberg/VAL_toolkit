@@ -1,3 +1,25 @@
+
+## One-command ACS pipeline
+
+```bash
+conda activate val-single-cell
+python -m pip install -e .
+python scripts/create_example_h5ad.py
+python scripts/run_acs_pipeline.py --config configs/acs_pipeline.example.yaml
+```
+
+Outputs are written under:
+
+```text
+figures/example_acs_pipeline/
+```
+
+To run directly on existing annotation columns without annotation backends:
+
+```bash
+python scripts/run_acs_pipeline.py --config configs/acs_pipeline.example.yaml --skip-backends
+```
+
 # Common commands
 
 ## Create and activate environment

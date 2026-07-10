@@ -82,6 +82,25 @@ pip install -e .
 
 ---
 
+
+## Recommended one-command workflow
+
+For most users, start with the one-command ACS pipeline. It runs enabled annotation backends and then generates ACS figures A-F.
+
+```bash
+conda env create -f environment.yml
+conda activate val-single-cell
+
+python scripts/create_example_h5ad.py
+python scripts/run_acs_pipeline.py --config configs/acs_pipeline.example.yaml
+```
+
+For a user's own dataset, edit `configs/acs_pipeline.example.yaml` to point `input_h5ad` to the user's `.h5ad` file and set the metadata columns under `obs_columns`.
+
+The current automatic backend is CellTypist. SingleR and SCimilarity are scaffolded and can be represented through precomputed annotation columns until their automatic runners are implemented. With only CellTypist enabled, the pipeline ranks cells by CellTypist confidence; manuscript-style multi-method ACS requires additional annotation-method columns.
+
+See `docs/acs_pipeline.md` for details.
+
 ## Quick test: generate ACS figures A-F from an example h5ad
 
 Create a tiny synthetic `.h5ad` file. The example includes expression data, sample metadata, response labels, and fake multi-method annotation columns so the ACS workflow can be tested without installing external annotation packages.
