@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 from val_toolkit.config import read_yaml, resolve_path
@@ -42,6 +43,58 @@ def _run_step(command: list[str], label: str) -> None:
 def _any_backend_enabled(config: dict[str, Any]) -> bool:
     backends = config.get("annotation_backends", {}) or {}
     return any(bool(section.get("enabled", False)) for section in backends.values() if isinstance(section, dict))
+
+
+def _split_column_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, float) and pd.isna(value):
+        return []
+    return [x.strip() for x in str(value).split(",") if x.strip() and x.strip().lower() != "none"]
+
+
+def _backend_method_name(backend_name: str, label_column: str) -> str:
+    base = label_column
+    if base.endswith("_label"):
+        base = base[: -len("_label")]
+    if backend_name.lower() == "singler" and base.startswith("singler_"):
+        return "SingleR " + base[len("singler_") :].replace("_", " ").upper()
+    if backend_name.lower() == "celltypist":
+        return "CellTypist"
+    return base.replace("_", " ").title()
+
+
+def _augment_annotation_methods_from_status(
+    annotation_methods: list[dict[str, Any]],
+    status_csv: Path,
+) -> list[dict[str, Any]]:
+    if not status_csv.exists():
+        return annotation_methods
+    existing_label_cols = {str(m.get("label_column")) for m in annotation_methods if m.get("label_column")}
+    status = pd.read_csv(status_csv)
+    out = list(annotation_methods)
+    for _, row in status.iterrows():
+        if str(row.get("status", "")).lower() != "completed":
+            continue
+        label_cols = _split_column_list(row.get("label_column"))
+        confidence_cols = _split_column_list(row.get("confidence_column"))
+        if len(label_cols) != len(confidence_cols):
+            raise ValueError(
+                f"Backend status row for {row.get('name')} has mismatched label/confidence columns: "
+                f"{label_cols} vs {confidence_cols}"
+            )
+        for label_col, confidence_col in zip(label_cols, confidence_cols):
+            if label_col in existing_label_cols:
+                continue
+            out.append(
+                {
+                    "name": _backend_method_name(str(row.get("name", "Backend")), label_col),
+                    "label_column": label_col,
+                    "confidence_column": confidence_col,
+                }
+            )
+            existing_label_cols.add(label_col)
+    return out
 
 
 def main() -> None:
@@ -86,9 +139,10 @@ def main() -> None:
     generated_config_dir = ensure_output_dir(output_dir / str(pipeline_cfg.get("generated_config_subdir", "generated_configs")))
 
     annotated_h5ad = input_h5ad
+    backend_outputs = config.get("backend_outputs", {}) or {}
+    status_csv_name = backend_outputs.get("status_csv", "annotation_backend_status.csv")
 
     if run_backends and backend_enabled:
-        backend_outputs = config.get("backend_outputs", {}) or {}
         annotated_h5ad_name = backend_outputs.get("annotated_h5ad", "annotation_backends_annotated.h5ad")
 
         backend_config = {
@@ -98,7 +152,7 @@ def main() -> None:
             "annotation_backends": config.get("annotation_backends", {}) or {},
             "outputs": {
                 "combined_annotation_csv": backend_outputs.get("combined_annotation_csv", "annotation_backend_columns.csv"),
-                "status_csv": backend_outputs.get("status_csv", "annotation_backend_status.csv"),
+                "status_csv": status_csv_name,
                 "write_h5ad": bool(backend_outputs.get("write_h5ad", True)),
                 "annotated_h5ad": annotated_h5ad_name,
             },
@@ -122,6 +176,16 @@ def main() -> None:
         print(f"\nSkipping annotation backend step because {reason}.")
         print("ACS will run directly on annotation columns already present in the input h5ad or external CSV.")
 
+    annotation_methods = list(config.get("annotation_methods", []))
+    if bool(pipeline_cfg.get("auto_include_backend_methods", True)) and run_backends and backend_enabled:
+        annotation_methods = _augment_annotation_methods_from_status(
+            annotation_methods,
+            annotation_output_dir / status_csv_name,
+        )
+        print("\nACS annotation methods selected:")
+        for method in annotation_methods:
+            print(f"  - {method.get('name')}: {method.get('label_column')} / {method.get('confidence_column')}")
+
     acs_config = {
         "input_h5ad": str(annotated_h5ad),
         "output_dir": str(acs_output_dir),
@@ -129,7 +193,7 @@ def main() -> None:
         "response_groups": config.get("response_groups", {}) or {},
         "major_cell_types": config.get("major_cell_types", ["B", "CD4 T", "CD8 T", "DC", "Monocytes", "NK"]),
         "annotation_source": config.get("annotation_source", {"mode": "obs_columns"}) or {"mode": "obs_columns"},
-        "annotation_methods": config.get("annotation_methods", []),
+        "annotation_methods": annotation_methods,
         "label_mapping": config.get("label_mapping", {}) or {},
         "acs": config.get("acs", {}) or {},
         "binning": config.get("binning", {}) or {},

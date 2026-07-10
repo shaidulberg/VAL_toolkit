@@ -2,7 +2,7 @@
 
 The one-command pipeline runs the two main steps needed for ACS figures:
 
-1. Optional annotation backends, currently automatic CellTypist and scaffolded SingleR/SCimilarity.
+1. Optional annotation backends, currently automatic CellTypist and optional automatic SingleR, with SCimilarity scaffolded.
 2. ACS-ranked bin analysis and ACS figures A-F.
 
 ```bash

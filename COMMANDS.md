@@ -97,10 +97,15 @@ python scripts/create_example_h5ad.py
 python scripts/run_annotation_backends.py --config configs/annotation_backends.example.yaml
 ```
 
-CellTypist is implemented. SingleR and SCimilarity are scaffolded and should be supplied as precomputed annotation columns or CSVs until their automatic backends are implemented.
+CellTypist and SingleR are implemented. SingleR is implemented through an optional R/Bioconductor bridge; SCimilarity is scaffolded and should be supplied as precomputed annotation columns or CSVs until the SCimilarity automatic backend is implemented.
 
 ## Legacy CellTypist-only runner
 
 ```bash
 python scripts/run_celltypist_annotations.py --config configs/celltypist_annotations.example.yaml
 ```
+
+
+## Optional SingleR backend
+
+Install the R/Bioconductor packages listed in `docs/singler_backend.md`, set `annotation_backends.singler.enabled: true`, then run the ACS pipeline.

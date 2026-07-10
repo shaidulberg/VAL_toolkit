@@ -53,7 +53,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Run optional annotation backends for downstream ACS figures. "
-            "CellTypist is implemented now; SingleR and SCimilarity are scaffolded and can be supplied "
+            "CellTypist and SingleR are implemented; SCimilarity is scaffolded and can be supplied "
             "as precomputed annotation columns to scripts/run_acs_figures.py."
         )
     )
@@ -134,28 +134,51 @@ def main() -> None:
 
     singler_cfg = backend_cfg.get("singler", {})
     if bool(singler_cfg.get("enabled", False)):
-        print("\n[SingleR] Checking SingleR backend scaffold...")
+        print("\n[SingleR] Running SingleR backend through Rscript...")
+        prefix = str(singler_cfg.get("prefix", "singler"))
+        references = tuple(singler_cfg.get("references", ["HPCA", "Monaco", "DICE", "BlueprintEncode", "Novershtern"]))
         try:
-            run_singler_backend(
+            table, raw = run_singler_backend(
                 adata,
                 config=SingleRConfig(
-                    references=tuple(singler_cfg.get("references", ["HPCA", "Monaco", "DICE", "BlueprintEncode", "DatabaseImmuneCellExpression", "Novershtern"])),
-                    prefix=str(singler_cfg.get("prefix", "singler")),
+                    references=references,
+                    prefix=prefix,
                     rscript=str(singler_cfg.get("rscript", "Rscript")),
+                    label_field=str(singler_cfg.get("label_field", "label.main")),
+                    prune_labels=bool(singler_cfg.get("prune_labels", True)),
+                    score_column=str(singler_cfg.get("score_column", "assigned_label_score")),
+                    assay_type_ref=str(singler_cfg.get("assay_type_ref", "logcounts")),
+                    keep_temp=bool(singler_cfg.get("keep_temp", False)),
                     on_unavailable=str(singler_cfg.get("on_unavailable", "skip")),
                 ),
+                expression_layer=expression_cfg.get("layer"),
+                use_raw=bool(expression_cfg.get("use_raw", False)),
+                normalize=bool(expression_cfg.get("normalize_to_target_sum", False)),
+                target_sum=float(expression_cfg.get("target_sum", 10000.0)),
+                log1p=bool(expression_cfg.get("log1p", False)),
+                work_dir=output_dir / "singler_work" if bool(singler_cfg.get("keep_temp", False)) else None,
             )
+            table_path = output_dir / f"{prefix}_annotations.csv"
+            table.to_csv(table_path, index=False)
+            tables.append(table)
+            label_cols = [c for c in table.columns if c.endswith("_label")]
+            confidence_cols = [c for c in table.columns if c.endswith("_confidence")]
+            statuses.append(
+                BackendStatus(
+                    name="SingleR",
+                    enabled=True,
+                    status="completed",
+                    message=f"SingleR completed successfully for references: {', '.join(references)}.",
+                    output_csv=str(table_path),
+                    label_column=",".join(label_cols),
+                    confidence_column=",".join(confidence_cols),
+                )
+            )
+            print(f"[SingleR] Saved: {table_path}")
         except Exception as exc:
             if _should_skip(singler_cfg, exc):
-                statuses.append(
-                    BackendStatus(
-                        "SingleR",
-                        True,
-                        "scaffolded",
-                        str(exc),
-                    )
-                )
-                print(f"[SingleR] Scaffolded/skipped: {exc}")
+                statuses.append(BackendStatus("SingleR", True, "skipped", str(exc)))
+                print(f"[SingleR] Skipped: {exc}")
             else:
                 raise
     else:

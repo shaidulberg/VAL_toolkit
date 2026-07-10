@@ -65,9 +65,9 @@ celltypist_confidence
 
 ### SingleR
 
-Scaffolded, not yet automatically executed.
+Implemented as an optional R/Bioconductor backend.
 
-SingleR is R/Bioconductor-based and typically requires R, Bioconductor, `SingleR`, `celldex`, and reference dataset setup. Until the automatic bridge is implemented, run SingleR separately and provide its labels/scores through `adata.obs` or an annotation CSV.
+The backend exports the selected AnnData expression matrix to MatrixMarket format, runs SingleR through `Rscript`, and writes one label/confidence pair per configured celldex reference. See `docs/singler_backend.md` for R package installation and configuration details.
 
 ### SCimilarity
 

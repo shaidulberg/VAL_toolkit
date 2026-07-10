@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -11,8 +12,10 @@ import pandas as pd
 
 try:
     from scipy import sparse
+    from scipy.io import mmwrite
 except Exception:  # pragma: no cover - scipy is a package dependency, this is defensive.
     sparse = None  # type: ignore[assignment]
+    mmwrite = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -48,16 +51,22 @@ class CellTypistConfig:
 
 @dataclass(frozen=True)
 class SingleRConfig:
-    """
-    Configuration placeholder for a future automatic SingleR backend.
+    """Configuration for the optional automatic SingleR backend.
 
-    The current toolkit does not automatically execute SingleR. It records a clear
-    skip/status message and points users to the annotation-column ACS workflow.
+    SingleR is executed through an Rscript bridge because SingleR and celldex are
+    Bioconductor packages. The backend exports the selected AnnData expression
+    matrix to MatrixMarket format, runs SingleR for each requested celldex
+    reference, and imports compact label/confidence columns for ACS.
     """
 
-    references: tuple[str, ...] = ("HPCA", "Monaco", "DICE", "BlueprintEncode", "DatabaseImmuneCellExpression", "Novershtern")
+    references: tuple[str, ...] = ("HPCA", "Monaco", "DICE", "BlueprintEncode", "Novershtern")
     prefix: str = "singler"
     rscript: str = "Rscript"
+    label_field: str = "label.main"
+    prune_labels: bool = True
+    score_column: str = "assigned_label_score"
+    assay_type_ref: str = "logcounts"
+    keep_temp: bool = False
     on_unavailable: str = "skip"
 
 
@@ -264,40 +273,212 @@ def run_celltypist_backend(
 
 
 def check_singler_available(rscript: str = "Rscript") -> tuple[bool, str]:
-    """Return whether Rscript appears available for a future SingleR bridge."""
+    """Return whether Rscript, SingleR, celldex, and Matrix are available."""
     if shutil.which(rscript) is None:
         return False, f"{rscript!r} was not found on PATH."
+    probe_expr = "cat(all(sapply(c('SingleR','celldex','Matrix','SummarizedExperiment'), requireNamespace, quietly=TRUE)))"
     try:
         probe = subprocess.run(
-            [rscript, "-e", "cat(requireNamespace('SingleR', quietly=TRUE))"],
+            [rscript, "-e", probe_expr],
             check=False,
             text=True,
             capture_output=True,
             timeout=30,
         )
     except Exception as exc:  # pragma: no cover - depends on host R setup.
-        return False, f"Could not probe SingleR through {rscript!r}: {exc}"
+        return False, f"Could not probe SingleR dependencies through {rscript!r}: {exc}"
     if "TRUE" not in probe.stdout:
-        return False, "R is available, but the Bioconductor package SingleR is not installed."
-    return True, "Rscript and SingleR are available. Automatic SingleR execution is scaffolded for a future release."
+        details = (probe.stderr or probe.stdout or "").strip()
+        return (
+            False,
+            "R is available, but one or more required Bioconductor packages are missing: "
+            "SingleR, celldex, Matrix, SummarizedExperiment. Install them with BiocManager."
+            + (f" Probe output: {details}" if details else ""),
+        )
+    return True, "Rscript and required SingleR dependencies are available."
 
 
-def run_singler_backend(*_: Any, config: SingleRConfig | None = None, **__: Any) -> tuple[pd.DataFrame, Any]:
+def _sanitize_reference_name(reference: str) -> str:
+    """Convert a reference name to a stable lowercase suffix for output columns."""
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(reference)).strip("_")
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    aliases = {
+        "humanprimarycellatlas": "hpca",
+        "databaseimmunecellexpression": "dice",
+        "databaseimmunecellexpressiondata": "dice",
+        "blueprintencode": "encode",
+        "blueprint": "encode",
+        "novershternhematopoietic": "hema",
+        "novershtern": "hema",
+    }
+    return aliases.get(cleaned, cleaned or "reference")
+
+
+def _write_lines(path: Path, values: Iterable[Any]) -> None:
+    with path.open("w") as handle:
+        for value in values:
+            handle.write(str(value) + "\n")
+
+
+def export_anndata_matrix_for_r(
+    adata: Any,
+    output_dir: Path,
+    *,
+    expression_layer: str | None = None,
+    use_raw: bool = False,
+    normalize: bool = False,
+    target_sum: float = 10000.0,
+    log1p: bool = False,
+) -> dict[str, Path]:
+    """Export an AnnData expression matrix for the R SingleR bridge.
+
+    The MatrixMarket file is written as cells x genes. The R bridge transposes it
+    to genes x cells before calling SingleR.
     """
-    Placeholder for automatic SingleR execution.
+    if mmwrite is None or sparse is None:
+        raise BackendUnavailableError("scipy.io.mmwrite is required to export matrices for the SingleR backend.")
 
-    Use ``scripts/run_acs_figures.py`` with annotation columns or an annotation CSV
-    to include SingleR outputs today. This function intentionally raises a clear
-    message rather than silently producing incomplete manuscript-style VAL results.
-    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    query = prepare_celltypist_input(
+        adata,
+        layer=expression_layer,
+        use_raw=use_raw,
+        normalize=normalize,
+        target_sum=target_sum,
+        log1p=log1p,
+    )
+
+    matrix_path = output_dir / "query_cells_by_genes.mtx"
+    cell_ids_path = output_dir / "cell_ids.txt"
+    gene_ids_path = output_dir / "gene_ids.txt"
+
+    x = query.X
+    if sparse.issparse(x):
+        matrix_to_write = x.tocoo()
+    else:
+        matrix_to_write = sparse.coo_matrix(np.asarray(x, dtype=float))
+    mmwrite(str(matrix_path), matrix_to_write)
+    _write_lines(cell_ids_path, query.obs_names.astype(str))
+    _write_lines(gene_ids_path, query.var_names.astype(str))
+
+    return {"matrix": matrix_path, "cell_ids": cell_ids_path, "gene_ids": gene_ids_path}
+
+
+def _singler_r_script_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "scripts" / "run_singler_backend.R"
+
+
+def _run_single_reference_singler(
+    *,
+    cfg: SingleRConfig,
+    exported: dict[str, Path],
+    reference: str,
+    output_csv: Path,
+) -> pd.DataFrame:
+    script_path = _singler_r_script_path()
+    if not script_path.exists():
+        raise FileNotFoundError(f"SingleR R bridge script not found: {script_path}")
+
+    cmd = [
+        cfg.rscript,
+        str(script_path),
+        "--matrix",
+        str(exported["matrix"]),
+        "--cell_ids",
+        str(exported["cell_ids"]),
+        "--gene_ids",
+        str(exported["gene_ids"]),
+        "--output_csv",
+        str(output_csv),
+        "--reference",
+        str(reference),
+        "--label_field",
+        cfg.label_field,
+        "--prune_labels",
+        str(cfg.prune_labels).lower(),
+        "--score_column",
+        cfg.score_column,
+        "--assay_type_ref",
+        cfg.assay_type_ref,
+    ]
+    result = subprocess.run(cmd, check=False, text=True, capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "SingleR R bridge failed for reference "
+            f"{reference!r}.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    table = pd.read_csv(output_csv)
+    if not {"cell_id", "label", "confidence"}.issubset(table.columns):
+        raise ValueError(f"SingleR output for {reference!r} is missing required columns: {output_csv}")
+    suffix = _sanitize_reference_name(reference)
+    out = pd.DataFrame(
+        {
+            "cell_id": table["cell_id"].astype(str),
+            f"{cfg.prefix}_{suffix}_label": table["label"].astype(str),
+            f"{cfg.prefix}_{suffix}_confidence": pd.to_numeric(table["confidence"], errors="coerce"),
+        }
+    )
+    if "delta_next" in table.columns:
+        out[f"{cfg.prefix}_{suffix}_delta_next"] = pd.to_numeric(table["delta_next"], errors="coerce")
+    return out
+
+
+def run_singler_backend(
+    adata: Any,
+    *,
+    config: SingleRConfig | None = None,
+    expression_layer: str | None = None,
+    use_raw: bool = False,
+    normalize: bool = False,
+    target_sum: float = 10000.0,
+    log1p: bool = False,
+    work_dir: str | Path | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Run SingleR through an Rscript bridge and return compact annotation columns."""
     cfg = config or SingleRConfig()
     available, message = check_singler_available(cfg.rscript)
     if not available:
         raise BackendUnavailableError(message)
-    raise NotImplementedError(
-        "Automatic SingleR execution is not implemented yet. Export SingleR labels/scores "
-        "into adata.obs or an annotation CSV and include them in configs/acs_figures.example.yaml."
-    )
+
+    temp_ctx = None
+    if work_dir is None:
+        temp_ctx = tempfile.TemporaryDirectory(prefix="val_singler_")
+        run_dir = Path(temp_ctx.name)
+    else:
+        run_dir = Path(work_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        exported = export_anndata_matrix_for_r(
+            adata,
+            run_dir,
+            expression_layer=expression_layer,
+            use_raw=use_raw,
+            normalize=normalize,
+            target_sum=target_sum,
+            log1p=log1p,
+        )
+        reference_tables: list[pd.DataFrame] = []
+        reference_outputs: dict[str, str] = {}
+        for reference in cfg.references:
+            suffix = _sanitize_reference_name(reference)
+            output_csv = run_dir / f"singler_{suffix}_raw.csv"
+            table = _run_single_reference_singler(
+                cfg=cfg,
+                exported=exported,
+                reference=reference,
+                output_csv=output_csv,
+            )
+            reference_tables.append(table)
+            reference_outputs[str(reference)] = str(output_csv)
+
+        merged = merge_annotation_tables(reference_tables)
+        raw = {"reference_outputs": reference_outputs, "work_dir": str(run_dir)}
+        return merged, raw
+    finally:
+        if temp_ctx is not None and not cfg.keep_temp:
+            temp_ctx.cleanup()
 
 
 def check_scimilarity_available(model_path: str | None = None) -> tuple[bool, str]:

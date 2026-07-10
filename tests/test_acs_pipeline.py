@@ -17,3 +17,33 @@ def test_acs_pipeline_script_exists_and_is_executable():
     assert path.exists()
     assert "run_annotation_backends.py" in path.read_text()
     assert "run_acs_figures.py" in path.read_text()
+
+
+import pandas as pd
+
+from scripts.run_acs_pipeline import _augment_annotation_methods_from_status
+
+
+def test_pipeline_auto_includes_completed_backend_methods(tmp_path):
+    status_csv = tmp_path / "annotation_backend_status.csv"
+    pd.DataFrame(
+        [
+            {
+                "name": "SingleR",
+                "enabled": True,
+                "status": "completed",
+                "message": "ok",
+                "output_csv": "singler.csv",
+                "label_column": "singler_hpca_label,singler_monaco_label",
+                "confidence_column": "singler_hpca_confidence,singler_monaco_confidence",
+            }
+        ]
+    ).to_csv(status_csv, index=False)
+
+    methods = _augment_annotation_methods_from_status([], status_csv)
+
+    assert [m["label_column"] for m in methods] == ["singler_hpca_label", "singler_monaco_label"]
+    assert [m["confidence_column"] for m in methods] == [
+        "singler_hpca_confidence",
+        "singler_monaco_confidence",
+    ]

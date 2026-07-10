@@ -72,3 +72,25 @@ def test_statuses_to_frame_has_expected_columns() -> None:
     assert frame.loc[0, "name"] == "CellTypist"
     assert frame.loc[0, "status"] == "completed"
     assert frame.loc[0, "label_column"] == "celltypist_label"
+
+from val_toolkit.annotation_backends import (
+    SingleRConfig,
+    _sanitize_reference_name,
+    run_singler_backend,
+)
+
+
+def test_singler_reference_name_sanitization() -> None:
+    assert _sanitize_reference_name("HPCA") == "hpca"
+    assert _sanitize_reference_name("BlueprintEncode") == "encode"
+    assert _sanitize_reference_name("DatabaseImmuneCellExpression") == "dice"
+    assert _sanitize_reference_name("Novershtern") == "hema"
+
+
+def test_singler_backend_reports_missing_rscript() -> None:
+    try:
+        run_singler_backend(object(), config=SingleRConfig(rscript="definitely_missing_Rscript_for_test"))
+    except Exception as exc:
+        assert "Rscript" in str(exc) or "definitely_missing_Rscript_for_test" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected SingleR backend to fail when Rscript is missing")

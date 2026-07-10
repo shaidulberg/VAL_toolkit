@@ -1,8 +1,8 @@
 # Optional annotation backend runner.
-# CellTypist is implemented. SingleR and SCimilarity are scaffolded so the repo
-# already reflects the full manuscript pipeline, but users should provide their
-# SingleR/SCimilarity outputs as annotation columns or CSVs until those automatic
-# backends are implemented.
+# CellTypist and SingleR are implemented. SCimilarity is scaffolded so the repo
+# already reflects the full manuscript pipeline, but users should provide
+# SCimilarity outputs as annotation columns or CSVs until that automatic backend
+# is implemented.
 
 input_h5ad: example_data/val_ranked_bins_example.h5ad
 output_dir: figures/example_annotation_backends
@@ -31,17 +31,22 @@ annotation_backends:
 
   singler:
     enabled: false
-    # These names document the intended manuscript-style SingleR references.
-    # Automatic SingleR execution is scaffolded for a future release.
+    # Set enabled: true after installing R/Bioconductor dependencies listed in
+    # docs/singler_backend.md. Each reference produces its own label/confidence
+    # columns, e.g. singler_hpca_label and singler_hpca_confidence.
     references:
       - HPCA
       - Monaco
       - DICE
       - BlueprintEncode
-      - DatabaseImmuneCellExpression
       - Novershtern
     prefix: singler
     rscript: Rscript
+    label_field: label.main
+    prune_labels: true
+    score_column: assigned_label_score
+    assay_type_ref: logcounts
+    keep_temp: false
     on_unavailable: skip
 
   scimilarity:

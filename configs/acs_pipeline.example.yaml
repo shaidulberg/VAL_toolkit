@@ -10,6 +10,9 @@ output_dir: figures/example_acs_pipeline
 
 pipeline:
   run_annotation_backends: true
+  # Automatically add completed backend label/confidence columns to ACS methods.
+  # This lets CellTypist and enabled SingleR references flow directly into ACS.
+  auto_include_backend_methods: true
   annotation_output_subdir: annotation_backends
   acs_output_subdir: acs_figures
   generated_config_subdir: generated_configs
@@ -33,7 +36,7 @@ major_cell_types:
   - NK
 
 # Annotation backend settings.
-# CellTypist is implemented. SingleR and SCimilarity are scaffolded and disabled by default.
+# CellTypist and SingleR are implemented. SCimilarity is scaffolded and disabled by default.
 expression:
   # CellTypist expects log1p-normalized expression to 10,000 counts per cell.
   # Use true/true for raw or count-like matrices. Use false/false if already prepared.
@@ -63,10 +66,14 @@ annotation_backends:
       - Monaco
       - DICE
       - BlueprintEncode
-      - DatabaseImmuneCellExpression
       - Novershtern
     prefix: singler
     rscript: Rscript
+    label_field: label.main
+    prune_labels: true
+    score_column: assigned_label_score
+    assay_type_ref: logcounts
+    keep_temp: false
     on_unavailable: skip
 
   scimilarity:
@@ -82,8 +89,8 @@ backend_outputs:
   annotated_h5ad: annotation_backends_annotated.h5ad
 
 # ACS settings.
-# This default uses CellTypist as the automatic backend method.
-# For manuscript-style multi-method ACS, add SingleR/SCimilarity/user-supplied annotation columns here.
+# auto_include_backend_methods adds completed backend columns automatically.
+# You can still list fixed/user-supplied annotation methods here.
 annotation_source:
   mode: obs_columns
 
