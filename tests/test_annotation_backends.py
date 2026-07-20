@@ -94,3 +94,44 @@ def test_singler_backend_reports_missing_rscript() -> None:
         assert "Rscript" in str(exc) or "definitely_missing_Rscript_for_test" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected SingleR backend to fail when Rscript is missing")
+
+import numpy as np
+
+from val_toolkit.annotation_backends import extract_scimilarity_annotation_table
+
+
+def test_extract_scimilarity_annotation_table_uses_vsall_confidence() -> None:
+    predictions = pd.Series(["B cell", "T cell"], index=["c1", "c2"])
+    stats = pd.DataFrame(
+        {
+            "vsAll": [0.8, 0.7],
+            "vs2nd": [0.9, 0.6],
+            "min_dist": [0.1, 0.2],
+        },
+        index=["c1", "c2"],
+    )
+
+    table = extract_scimilarity_annotation_table(
+        predictions=predictions,
+        stats=stats,
+        cell_ids=["c1", "c2"],
+        prefix="scimilarity",
+        confidence_column="vsAll",
+    )
+
+    assert list(table["scimilarity_label"]) == ["B cell", "T cell"]
+    assert np.allclose(table["scimilarity_confidence"], [0.8, 0.7])
+    assert "scimilarity_min_dist" in table.columns
+
+
+def test_extract_scimilarity_annotation_table_falls_back_to_min_dist() -> None:
+    table = extract_scimilarity_annotation_table(
+        predictions=["B cell"],
+        stats=pd.DataFrame({"min_dist": [1.0]}),
+        cell_ids=["c1"],
+        prefix="scimilarity",
+        confidence_column="missing_column",
+    )
+
+    assert table.loc[0, "scimilarity_label"] == "B cell"
+    assert table.loc[0, "scimilarity_confidence"] == 0.5

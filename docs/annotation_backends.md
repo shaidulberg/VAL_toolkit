@@ -71,9 +71,18 @@ The backend exports the selected AnnData expression matrix to MatrixMarket forma
 
 ### SCimilarity
 
-Scaffolded, not yet automatically executed.
+Implemented as an optional Python backend.
 
-SCimilarity requires a compatible Python environment, model files, gene alignment, and model-specific preprocessing. Until the automatic backend is implemented, run SCimilarity separately and provide its labels/confidence outputs through `adata.obs` or an annotation CSV.
+The backend uses the SCimilarity `CellAnnotation` API with a user-provided local model directory. It prepares the selected AnnData matrix, aligns the query genes to the model gene order, computes SCimilarity embeddings, obtains KNN-based cell-type predictions, and writes:
+
+```text
+scimilarity_label
+scimilarity_confidence
+```
+
+`scimilarity_confidence` defaults to the SCimilarity `vsAll` statistic. Users can also request `vs2nd`, `vsAll_weighted`, or `vs2nd_weighted` through the config.
+
+SCimilarity remains optional because it requires a separate package install and downloaded model files. If either is missing, set `on_unavailable: skip` to continue with the other completed methods. See `docs/scimilarity_backend.md`.
 
 ## Why all backends are optional
 

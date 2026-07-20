@@ -97,7 +97,7 @@ python scripts/run_acs_pipeline.py --config configs/acs_pipeline.example.yaml
 
 For a user's own dataset, edit `configs/acs_pipeline.example.yaml` to point `input_h5ad` to the user's `.h5ad` file and set the metadata columns under `obs_columns`.
 
-The current automatic backends are CellTypist and SingleR. SingleR runs through an optional R/Bioconductor bridge; SCimilarity is scaffolded and can be represented through precomputed annotation columns until its automatic runner is implemented. With only CellTypist enabled, the pipeline ranks cells by CellTypist confidence; manuscript-style multi-method ACS requires additional annotation-method columns.
+The current automatic backends are CellTypist, SingleR, and SCimilarity. SingleR runs through an optional R/Bioconductor bridge. SCimilarity requires the optional Python package and a local downloaded model directory. With only CellTypist enabled, the pipeline ranks cells by CellTypist confidence; manuscript-style multi-method ACS requires additional completed annotation-method columns.
 
 See `docs/acs_pipeline.md` for details.
 
@@ -299,7 +299,7 @@ The AUC bar plot is a manuscript-summary workflow. It is not the default bring-y
 
 ## Optional annotation backends
 
-The toolkit includes an optional backend runner that is designed for the full manuscript-style annotation framework. CellTypist is implemented as an automatic Python backend. SingleR is implemented through an optional R/Bioconductor bridge. SCimilarity is scaffolded and documented, but is not yet automatically executed because it requires additional model/environment setup.
+The toolkit includes an optional backend runner that is designed for the full manuscript-style annotation framework. CellTypist is implemented as an automatic Python backend. SingleR is implemented through an optional R/Bioconductor bridge. SCimilarity is implemented as an optional Python backend when the package and local model files are available.
 
 ```bash
 python scripts/create_example_h5ad.py
@@ -316,6 +316,6 @@ Current backend status:
 
 - **CellTypist**: implemented.
 - **SingleR**: implemented through optional `Rscript` + Bioconductor packages; see `docs/singler_backend.md`.
-- **SCimilarity**: scaffolded; provide precomputed SCimilarity labels/confidences through `adata.obs` or an annotation CSV for now.
+- **SCimilarity**: optional Python backend; requires `scimilarity` and a local model path. Precomputed SCimilarity labels/confidences can still be supplied through `adata.obs` or an annotation CSV.
 
 See `docs/annotation_backends.md and docs/singler_backend.md` for details.

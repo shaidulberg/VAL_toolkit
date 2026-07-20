@@ -72,15 +72,25 @@ class SingleRConfig:
 
 @dataclass(frozen=True)
 class SCimilarityConfig:
-    """
-    Configuration placeholder for a future automatic SCimilarity backend.
+    """Configuration for the optional automatic SCimilarity backend.
 
-    The current toolkit does not automatically execute SCimilarity because users
-    must provide a compatible SCimilarity installation and model path.
+    SCimilarity is executed through its Python API. Users must install the
+    optional ``scimilarity`` package and provide a compatible local model
+    directory. The backend aligns the query AnnData object to the model gene
+    order, computes embeddings, predicts nearest-neighbor cell-type labels, and
+    exports compact label/confidence columns for ACS.
     """
 
     model_path: str | None = None
     prefix: str = "scimilarity"
+    use_gpu: bool = False
+    k: int = 50
+    ef: int = 100
+    weighting: bool = False
+    confidence_column: str = "vsAll"
+    gene_overlap_threshold: int = 5000
+    safelist: tuple[str, ...] = ()
+    blocklist: tuple[str, ...] = ()
     on_unavailable: str = "skip"
 
 
@@ -482,30 +492,155 @@ def run_singler_backend(
 
 
 def check_scimilarity_available(model_path: str | None = None) -> tuple[bool, str]:
-    """Return whether the SCimilarity Python package and optional model path appear available."""
+    """Return whether the SCimilarity Python package and model path appear available."""
     try:
         import scimilarity  # noqa: F401  # type: ignore
+        from scimilarity.cell_annotation import CellAnnotation  # noqa: F401  # type: ignore
+        from scimilarity.utils import align_dataset  # noqa: F401  # type: ignore
     except ImportError:
-        return False, "The Python package scimilarity is not installed."
-    if model_path and not Path(model_path).expanduser().exists():
+        return (
+            False,
+            "The Python package scimilarity is not installed or its annotation API is unavailable. "
+            "Install it with `python -m pip install scimilarity` or from the Genentech/scimilarity source.",
+        )
+    if not model_path:
+        return False, "SCimilarity requires a local model_path pointing to downloaded SCimilarity model files."
+    if not Path(model_path).expanduser().exists():
         return False, f"SCimilarity model_path does not exist: {model_path}"
-    return True, "SCimilarity package is importable. Automatic SCimilarity execution is scaffolded for a future release."
+    return True, "SCimilarity package and model path are available."
 
 
-def run_scimilarity_backend(*_: Any, config: SCimilarityConfig | None = None, **__: Any) -> tuple[pd.DataFrame, Any]:
-    """
-    Placeholder for automatic SCimilarity execution.
+def _load_scimilarity_api() -> tuple[Any, Any]:
+    """Import SCimilarity annotation objects lazily."""
+    try:
+        from scimilarity.cell_annotation import CellAnnotation  # type: ignore
+        from scimilarity.utils import align_dataset  # type: ignore
+    except ImportError as exc:
+        raise BackendUnavailableError(
+            "The Python package scimilarity is not installed or does not expose the expected "
+            "CellAnnotation/align_dataset API. Install it with `python -m pip install scimilarity` "
+            "or from the Genentech/scimilarity source."
+        ) from exc
+    return CellAnnotation, align_dataset
 
-    Use the annotation-column ACS workflow with precomputed SCimilarity outputs today.
-    """
+
+def _choose_scimilarity_confidence(stats: pd.DataFrame, requested: str, weighting: bool) -> pd.Series:
+    """Choose a numeric confidence column from SCimilarity KNN statistics."""
+    preferred = requested
+    if requested == "auto":
+        preferred = "vsAll_weighted" if weighting else "vsAll"
+    candidates = [preferred, "vsAll_weighted", "vsAll", "vs2nd_weighted", "vs2nd"]
+    for col in candidates:
+        if col in stats.columns:
+            return pd.to_numeric(stats[col], errors="coerce")
+    if "min_dist" in stats.columns:
+        dist = pd.to_numeric(stats["min_dist"], errors="coerce")
+        return 1.0 / (1.0 + dist)
+    return pd.Series(np.nan, index=stats.index, dtype=float)
+
+
+def extract_scimilarity_annotation_table(
+    *,
+    predictions: Any,
+    stats: pd.DataFrame,
+    cell_ids: list[str] | pd.Index,
+    prefix: str = "scimilarity",
+    confidence_column: str = "vsAll",
+    weighting: bool = False,
+) -> pd.DataFrame:
+    """Convert SCimilarity KNN predictions/statistics into compact ACS columns."""
+    cell_ids = pd.Index([str(x) for x in cell_ids], name="cell_id")
+    if isinstance(predictions, pd.Series):
+        labels = predictions.copy()
+        labels.index = labels.index.astype(str)
+        labels = labels.reindex(cell_ids)
+    else:
+        labels = pd.Series(np.asarray(predictions).reshape(-1), index=cell_ids)
+
+    stats = stats.copy()
+    if len(stats.index) == len(cell_ids):
+        stats.index = cell_ids
+    else:
+        stats.index = stats.index.astype(str)
+        stats = stats.reindex(cell_ids)
+
+    confidence = _choose_scimilarity_confidence(stats, confidence_column, weighting).reindex(cell_ids)
+    out = pd.DataFrame(
+        {
+            "cell_id": cell_ids.astype(str),
+            f"{prefix}_label": labels.astype(object).to_numpy(),
+            f"{prefix}_confidence": confidence.to_numpy(dtype=float),
+        }
+    )
+    for optional_col in ["min_dist", "max_dist", "vs2nd", "vsAll", "vs2nd_weighted", "vsAll_weighted"]:
+        if optional_col in stats.columns:
+            out[f"{prefix}_{optional_col}"] = pd.to_numeric(stats[optional_col], errors="coerce").to_numpy()
+    return out
+
+
+def run_scimilarity_backend(
+    adata: Any,
+    *,
+    config: SCimilarityConfig | None = None,
+    expression_layer: str | None = None,
+    use_raw: bool = False,
+    normalize: bool = False,
+    target_sum: float = 10000.0,
+    log1p: bool = False,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Run SCimilarity cell-type annotation and return compact ACS columns."""
     cfg = config or SCimilarityConfig()
     available, message = check_scimilarity_available(cfg.model_path)
     if not available:
         raise BackendUnavailableError(message)
-    raise NotImplementedError(
-        "Automatic SCimilarity execution is not implemented yet. Export SCimilarity labels/confidences "
-        "into adata.obs or an annotation CSV and include them in configs/acs_figures.example.yaml."
+
+    CellAnnotation, align_dataset = _load_scimilarity_api()
+    model_path = str(Path(str(cfg.model_path)).expanduser())
+    annotator = CellAnnotation(model_path=model_path, use_gpu=cfg.use_gpu)
+
+    if cfg.safelist:
+        annotator.safelist_celltypes(list(cfg.safelist))
+    if cfg.blocklist:
+        annotator.blocklist_celltypes(list(cfg.blocklist))
+
+    query = prepare_celltypist_input(
+        adata,
+        layer=expression_layer,
+        use_raw=use_raw,
+        normalize=normalize,
+        target_sum=target_sum,
+        log1p=log1p,
     )
+    aligned = align_dataset(
+        query,
+        annotator.gene_order,
+        gene_overlap_threshold=int(cfg.gene_overlap_threshold),
+    )
+    embeddings = annotator.get_embeddings(aligned.X)
+    predictions, nn_idxs, nn_dists, stats = annotator.get_predictions_knn(
+        embeddings,
+        k=int(cfg.k),
+        ef=int(cfg.ef),
+        weighting=bool(cfg.weighting),
+    )
+    table = extract_scimilarity_annotation_table(
+        predictions=predictions,
+        stats=pd.DataFrame(stats),
+        cell_ids=list(aligned.obs_names.astype(str)),
+        prefix=cfg.prefix,
+        confidence_column=cfg.confidence_column,
+        weighting=cfg.weighting,
+    )
+    raw = {
+        "model_path": model_path,
+        "n_cells": int(aligned.n_obs),
+        "n_genes_aligned": int(aligned.n_vars),
+        "k": int(cfg.k),
+        "ef": int(cfg.ef),
+        "nn_idxs_shape": tuple(np.asarray(nn_idxs).shape),
+        "nn_dists_shape": tuple(np.asarray(nn_dists).shape),
+    }
+    return table, raw
 
 
 def attach_annotation_table_to_obs(adata: Any, table: pd.DataFrame) -> Any:

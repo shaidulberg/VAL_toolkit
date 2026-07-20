@@ -51,10 +51,17 @@ annotation_backends:
 
   scimilarity:
     enabled: false
-    # Automatic SCimilarity execution is scaffolded for a future release.
-    # Users with precomputed SCimilarity outputs can include those columns in the ACS config.
+    # Optional: requires `python -m pip install scimilarity` and a downloaded SCimilarity model directory.
     model_path:
     prefix: scimilarity
+    use_gpu: false
+    k: 50
+    ef: 100
+    weighting: false
+    confidence_column: vsAll
+    gene_overlap_threshold: 5000
+    safelist: []
+    blocklist: []
     on_unavailable: skip
 
 outputs:

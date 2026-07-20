@@ -53,8 +53,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Run optional annotation backends for downstream ACS figures. "
-            "CellTypist and SingleR are implemented; SCimilarity is scaffolded and can be supplied "
-            "as precomputed annotation columns to scripts/run_acs_figures.py."
+            "CellTypist, SingleR, and SCimilarity are supported as optional backends."
         )
     )
     parser.add_argument("--config", required=True, help="YAML config file.")
@@ -186,27 +185,49 @@ def main() -> None:
 
     scimilarity_cfg = backend_cfg.get("scimilarity", {})
     if bool(scimilarity_cfg.get("enabled", False)):
-        print("\n[SCimilarity] Checking SCimilarity backend scaffold...")
+        print("\n[SCimilarity] Running SCimilarity backend...")
+        prefix = str(scimilarity_cfg.get("prefix", "scimilarity"))
         try:
-            run_scimilarity_backend(
+            table, raw = run_scimilarity_backend(
                 adata,
                 config=SCimilarityConfig(
                     model_path=scimilarity_cfg.get("model_path"),
-                    prefix=str(scimilarity_cfg.get("prefix", "scimilarity")),
+                    prefix=prefix,
+                    use_gpu=bool(scimilarity_cfg.get("use_gpu", False)),
+                    k=int(scimilarity_cfg.get("k", 50)),
+                    ef=int(scimilarity_cfg.get("ef", 100)),
+                    weighting=bool(scimilarity_cfg.get("weighting", False)),
+                    confidence_column=str(scimilarity_cfg.get("confidence_column", "vsAll")),
+                    gene_overlap_threshold=int(scimilarity_cfg.get("gene_overlap_threshold", 5000)),
+                    safelist=tuple(scimilarity_cfg.get("safelist", []) or []),
+                    blocklist=tuple(scimilarity_cfg.get("blocklist", []) or []),
                     on_unavailable=str(scimilarity_cfg.get("on_unavailable", "skip")),
                 ),
+                expression_layer=expression_cfg.get("layer"),
+                use_raw=bool(expression_cfg.get("use_raw", False)),
+                normalize=bool(expression_cfg.get("normalize_to_target_sum", False)),
+                target_sum=float(expression_cfg.get("target_sum", 10000.0)),
+                log1p=bool(expression_cfg.get("log1p", False)),
             )
+            table_path = output_dir / f"{prefix}_annotations.csv"
+            table.to_csv(table_path, index=False)
+            tables.append(table)
+            statuses.append(
+                BackendStatus(
+                    name="SCimilarity",
+                    enabled=True,
+                    status="completed",
+                    message=f"SCimilarity completed successfully with k={scimilarity_cfg.get('k', 50)}.",
+                    output_csv=str(table_path),
+                    label_column=f"{prefix}_label",
+                    confidence_column=f"{prefix}_confidence",
+                )
+            )
+            print(f"[SCimilarity] Saved: {table_path}")
         except Exception as exc:
             if _should_skip(scimilarity_cfg, exc):
-                statuses.append(
-                    BackendStatus(
-                        "SCimilarity",
-                        True,
-                        "scaffolded",
-                        str(exc),
-                    )
-                )
-                print(f"[SCimilarity] Scaffolded/skipped: {exc}")
+                statuses.append(BackendStatus("SCimilarity", True, "skipped", str(exc)))
+                print(f"[SCimilarity] Skipped: {exc}")
             else:
                 raise
     else:

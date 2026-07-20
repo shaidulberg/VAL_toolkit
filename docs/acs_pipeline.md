@@ -2,7 +2,7 @@
 
 The one-command pipeline runs the two main steps needed for ACS figures:
 
-1. Optional annotation backends, currently automatic CellTypist and optional automatic SingleR, with SCimilarity scaffolded.
+1. Optional annotation backends: automatic CellTypist, optional automatic SingleR, and optional automatic SCimilarity when a local SCimilarity model directory is provided.
 2. ACS-ranked bin analysis and ACS figures A-F.
 
 ```bash
@@ -25,7 +25,7 @@ At minimum, the user must provide:
 
 The default example enables CellTypist and then runs ACS using CellTypist's label/confidence columns.
 This is a useful one-file automatic workflow, but with only one annotation method, `VAL` can only be 1.
-For manuscript-style multi-method ACS, provide additional annotation columns from SingleR, SCimilarity, or other methods and list them under `annotation_methods` in the config.
+For manuscript-style multi-method ACS, enable optional backends such as SingleR/SCimilarity or provide additional annotation columns from other methods and list them under `annotation_methods` in the config.
 
 ## Skipping annotation backends
 

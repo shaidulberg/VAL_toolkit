@@ -36,7 +36,7 @@ major_cell_types:
   - NK
 
 # Annotation backend settings.
-# CellTypist and SingleR are implemented. SCimilarity is scaffolded and disabled by default.
+# CellTypist, SingleR, and SCimilarity are implemented. SingleR/SCimilarity are disabled by default because they require additional dependencies or model files.
 expression:
   # CellTypist expects log1p-normalized expression to 10,000 counts per cell.
   # Use true/true for raw or count-like matrices. Use false/false if already prepared.
@@ -78,8 +78,17 @@ annotation_backends:
 
   scimilarity:
     enabled: false
+    # Optional: requires `python -m pip install scimilarity` and a downloaded SCimilarity model directory.
     model_path:
     prefix: scimilarity
+    use_gpu: false
+    k: 50
+    ef: 100
+    weighting: false
+    confidence_column: vsAll
+    gene_overlap_threshold: 5000
+    safelist: []
+    blocklist: []
     on_unavailable: skip
 
 backend_outputs:
