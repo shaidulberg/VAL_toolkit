@@ -643,6 +643,35 @@ def run_scimilarity_backend(
     return table, raw
 
 
+def _coerce_label_value_for_obs(value: Any) -> str | float:
+    """Return a plain string or np.nan for AnnData obs label storage.
+
+    Some optional backends, especially SCimilarity, may return labels as
+    numpy arrays, tuples, or other Python objects. anndata/h5py cannot write
+    those objects directly as variable-length strings, so label columns are
+    normalized before being attached to ``adata.obs``.
+    """
+    if value is None:
+        return np.nan
+    if isinstance(value, float) and np.isnan(value):
+        return np.nan
+    if isinstance(value, (list, tuple, set, np.ndarray)):
+        arr = np.asarray(list(value) if isinstance(value, set) else value, dtype=object).reshape(-1)
+        cleaned = [_coerce_label_value_for_obs(v) for v in arr]
+        cleaned = [str(v) for v in cleaned if not (isinstance(v, float) and np.isnan(v)) and str(v) != ""]
+        if not cleaned:
+            return np.nan
+        # Most prediction APIs return a single label. If multiple labels are
+        # returned, keep a deterministic semicolon-separated representation.
+        return ";".join(dict.fromkeys(cleaned))
+    try:
+        if bool(pd.isna(value)):
+            return np.nan
+    except Exception:
+        pass
+    return str(value)
+
+
 def attach_annotation_table_to_obs(adata: Any, table: pd.DataFrame) -> Any:
     """Attach annotation label/confidence columns to an AnnData object's obs."""
     if "cell_id" not in table.columns:
@@ -653,7 +682,11 @@ def attach_annotation_table_to_obs(adata: Any, table: pd.DataFrame) -> Any:
     keyed = keyed.set_index("cell_id")
     keyed = keyed.reindex(out.obs_names.astype(str))
     for col in keyed.columns:
-        out.obs[col] = keyed[col].to_numpy()
+        series = keyed[col]
+        if col.endswith("_label"):
+            out.obs[col] = pd.Categorical(series.map(_coerce_label_value_for_obs))
+        else:
+            out.obs[col] = series.to_numpy()
     return out
 
 
